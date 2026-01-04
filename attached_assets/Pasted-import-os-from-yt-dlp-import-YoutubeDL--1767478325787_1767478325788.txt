@@ -1,0 +1,64 @@
+import os
+from yt_dlp import YoutubeDL
+
+# Функція для скачування (додай це на початку або в окремий файл)
+async def download_song(query):
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': 'downloads/%(id)s.%(ext)s', # Куди зберігати
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }],
+        'noplaylist': True,
+        'quiet': True
+    }
+
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            # 1. Шукаємо відео
+            info = ydl.extract_info(f"ytsearch:{query}", download=False)['entries'][0]
+            video_id = info['id']
+            title = info['title']
+            url = info['webpage_url']
+            
+            # 2. Скачуємо
+            ydl.download([url])
+            
+            return {
+                'title': title,
+                'path': f"downloads/{video_id}.mp3",
+                'url': url
+            }
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+
+# --- Оновлений хендлер для текстового пошуку ---
+# Заміни старий хендлер @dp.message(F.text) на цей:
+
+@dp.message(F.text)
+async def text_search_and_download(message: types.Message):
+    # Ігноруємо кнопки меню, щоб не шукав "Профіль" як пісню
+    if message.text in ["🎵 Пошук музики", "📻 Радіо", "👤 Профіль", "ℹ️ Інфо", "📻 Радіо Шансон", "📻 Радіо Україна", "🔙 Назад"]:
+        return
+
+    query = message.text
+    await message.answer(f"🔎 Шукаю та завантажую: {query}...\nЦе може зайняти трохи часу ⏳")
+    
+    song_data = await download_song(query)
+    
+    if song_data and os.path.exists(song_data['path']):
+        try:
+            audio_file = FSInputFile(song_data['path'])
+            await message.answer_audio(
+                audio_file, 
+                caption=f"🎧 **{song_data['title']}**\n🤖 Знайдено через YouTube",
+                parse_mode="Markdown"
+            )
+        finally:
+            # Видаляємо файл після відправки, щоб не забивати пам'ять
+            os.remove(song_data['path'])
+    else:
+        await message.answer("Не вдалося знайти або завантажити цю пісню.")
